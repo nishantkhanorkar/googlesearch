@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<suite name="Google Search Test Automation Suite">
+	<test name="Google Search Tests">
+		<classes>
+			<class name="com.google.search.testcases.GoogleSearch"></class>
+		</classes>
+	</test>
+</suite>
