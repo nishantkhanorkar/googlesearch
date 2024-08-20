@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.4.1">
+<jmeterTestPlan version="1.2" properties="5.6.3" jmeter="5.6.3">
   <hashTree>
     <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Plan" enabled="true">
       <stringProp name="TestPlan.comments"></stringProp>
@@ -7,7 +7,38 @@
       <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
       <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
       <elementProp name="TestPlan.user_defined_variables" elementType="Arguments">
-        <collectionProp name="Arguments.arguments"/>
+        <collectionProp name="Arguments.arguments">
+          <elementProp name="MQ_HOSTNAME" elementType="Argument">
+            <stringProp name="Argument.name">MQ_HOSTNAME</stringProp>
+            <stringProp name="Argument.value">192.168.1.1</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="MQ_PORT" elementType="Argument">
+            <stringProp name="Argument.name">MQ_PORT</stringProp>
+            <stringProp name="Argument.value">1212</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="MQ_CHANNEL" elementType="Argument">
+            <stringProp name="Argument.name">MQ_CHANNEL</stringProp>
+            <stringProp name="Argument.value">ASVUT_NOSSL.TESTHUB</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="MQ_QUEUE_MANAGER" elementType="Argument">
+            <stringProp name="Argument.name">MQ_QUEUE_MANAGER</stringProp>
+            <stringProp name="Argument.value">TESTHUB</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="MQ_QUEUE" elementType="Argument">
+            <stringProp name="Argument.name">MQ_QUEUE</stringProp>
+            <stringProp name="Argument.value">AST.QP.ALL.ACCSERV.VALUE.REQ</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="MQ_REPLY_QUEUE" elementType="Argument">
+            <stringProp name="Argument.name">MQ_REPLY_QUEUE</stringProp>
+            <stringProp name="Argument.value">AST.QP.ALL.PYMT.VALUE.RES</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+        </collectionProp>
       </elementProp>
       <stringProp name="TestPlan.user_define_classpath"></stringProp>
     </TestPlan>
@@ -20,58 +51,67 @@
         </elementProp>
         <stringProp name="ThreadGroup.num_threads">1</stringProp>
         <stringProp name="ThreadGroup.ramp_time">1</stringProp>
+        <longProp name="ThreadGroup.start_time">1691575822000</longProp>
+        <longProp name="ThreadGroup.end_time">1691575822000</longProp>
         <boolProp name="ThreadGroup.scheduler">false</boolProp>
         <stringProp name="ThreadGroup.duration"></stringProp>
         <stringProp name="ThreadGroup.delay"></stringProp>
       </ThreadGroup>
       <hashTree>
-        <!-- JMS Publisher to send message -->
-        <JMSPublisher guiclass="JMSPublisherGui" testclass="JMSPublisher" testname="JMS Publisher" enabled="true">
-          <stringProp name="JMSSampler.queueconnectionfactory">myQueueConnectionFactory</stringProp>
-          <stringProp name="JMSSampler.topic">false</stringProp>
-          <stringProp name="JMSSampler.destination">myQueue</stringProp>
-          <stringProp name="JMSSampler.replyDestination">myReplyQueue</stringProp>
-          <stringProp name="JMSSampler.textMessage">This is a fixed-length text message to be sent to MQ.</stringProp>
-          <stringProp name="JMSSampler.configChoice">jms_use_text</stringProp>
-          <stringProp name="JMSSampler.iterations">1</stringProp>
-          <stringProp name="JMSSampler.expiry">0</stringProp>
-          <stringProp name="JMSSampler.priority">4</stringProp>
-          <stringProp name="JMSSampler.useReqMsgIdAsCorrelId">false</stringProp>
-          <stringProp name="JMSSampler.stopBetweenSamples">false</stringProp>
-          <stringProp name="JMSSampler.durableSubscriptionId"></stringProp>
-          <stringProp name="JMSSampler.clientId"></stringProp>
-          <stringProp name="JMSSampler.username"></stringProp>
-          <stringProp name="JMSSampler.password"></stringProp>
-        </JMSPublisher>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Send Message to MQ" enabled="true">
+          <stringProp name="filename"></stringProp>
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="script">
+            <![CDATA[
+import com.ibm.mq.jms.MQQueueConnectionFactory;
+import com.ibm.msg.client.wmq.WMQConstants;
+import javax.jms.QueueConnection;
+import javax.jms.QueueSession;
+import javax.jms.Queue;
+import javax.jms.QueueSender;
+import javax.jms.TextMessage;
+
+// Setup MQ connection factory
+MQQueueConnectionFactory factory = new MQQueueConnectionFactory();
+factory.setHostName(vars.get("MQ_HOSTNAME"));
+factory.setPort(Integer.parseInt(vars.get("MQ_PORT")));
+factory.setChannel(vars.get("MQ_CHANNEL"));
+factory.setQueueManager(vars.get("MQ_QUEUE_MANAGER"));
+factory.setTransportType(WMQConstants.WMQ_CM_CLIENT);
+
+// Create a connection
+QueueConnection connection = factory.createQueueConnection();
+connection.start();
+
+// Create a session
+QueueSession session = connection.createQueueSession(false, QueueSession.AUTO_ACKNOWLEDGE);
+
+// Create the destination (Queue)
+Queue queue = session.createQueue(vars.get("MQ_QUEUE"));
+
+// Create a sender to the queue
+QueueSender sender = session.createSender(queue);
+
+// Create a message
+TextMessage message = session.createTextMessage("this is test message");
+
+// Set the ReplyToQueue
+Queue replyQueue = session.createQueue(vars.get("MQ_REPLY_QUEUE"));
+message.setJMSReplyTo(replyQueue);
+
+// Send the message
+sender.send(message);
+
+// Cleanup
+sender.close();
+session.close();
+connection.close();
+]]>
+          </stringProp>
+        </JSR223Sampler>
         <hashTree/>
-        
-        <!-- JMS Subscriber to read message from reply queue -->
-        <JMSSubscriber guiclass="JMSSubscriberGui" testclass="JMSSubscriber" testname="JMS Subscriber" enabled="true">
-          <stringProp name="JMSSampler.queueconnectionfactory">myQueueConnectionFactory</stringProp>
-          <stringProp name="JMSSampler.topic">false</stringProp>
-          <stringProp name="JMSSampler.destination">myReplyQueue</stringProp>
-          <stringProp name="JMSSampler.clientId"></stringProp>
-          <stringProp name="JMSSampler.durableSubscriptionId"></stringProp>
-          <stringProp name="JMSSampler.useSelector">false</stringProp>
-          <stringProp name="JMSSampler.messageSelector"></stringProp>
-          <stringProp name="JMSSampler.timeout">10000</stringProp>
-        </JMSSubscriber>
-        <hashTree>
-          <!-- Response Assertion to verify content (Optional) -->
-          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Response Assertion" enabled="true">
-            <collectionProp name="Asserion.test_strings">
-              <stringProp name="67696">Expected Response Text</stringProp>
-            </collectionProp>
-            <stringProp name="Assertion.custom_message"></stringProp>
-            <stringProp name="Assertion.test_field">Assertion.response_data</stringProp>
-            <boolProp name="Assertion.assume_success">false</boolProp>
-            <intProp name="Assertion.test_type">2</intProp>
-          </ResponseAssertion>
-          <hashTree/>
-        </hashTree>
-        
-        <!-- Add a Listener (optional) -->
-        <ViewResultsTree guiclass="ViewResultsFullVisualizer" testclass="ViewResultsTree" testname="View Results Tree" enabled="true"/>
+        <ViewResultsTree guiclass="ViewResultsTreeGui" testclass="ViewResultsTree" testname="View Results Tree" enabled="true"/>
         <hashTree/>
       </hashTree>
     </hashTree>
