@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.4.1">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Plan" enabled="true">
+      <stringProp name="TestPlan.comments"></stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+      <stringProp name="TestPlan.user_define_classpath"></stringProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">1</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">1</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">1</stringProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+        <stringProp name="ThreadGroup.duration"></stringProp>
+        <stringProp name="ThreadGroup.delay"></stringProp>
+      </ThreadGroup>
+      <hashTree>
+        <!-- JMS Publisher to send message -->
+        <JMSPublisher guiclass="JMSPublisherGui" testclass="JMSPublisher" testname="JMS Publisher" enabled="true">
+          <stringProp name="JMSSampler.queueconnectionfactory">myQueueConnectionFactory</stringProp>
+          <stringProp name="JMSSampler.topic">false</stringProp>
+          <stringProp name="JMSSampler.destination">myQueue</stringProp>
+          <stringProp name="JMSSampler.replyDestination">myReplyQueue</stringProp>
+          <stringProp name="JMSSampler.textMessage">This is a fixed-length text message to be sent to MQ.</stringProp>
+          <stringProp name="JMSSampler.configChoice">jms_use_text</stringProp>
+          <stringProp name="JMSSampler.iterations">1</stringProp>
+          <stringProp name="JMSSampler.expiry">0</stringProp>
+          <stringProp name="JMSSampler.priority">4</stringProp>
+          <stringProp name="JMSSampler.useReqMsgIdAsCorrelId">false</stringProp>
+          <stringProp name="JMSSampler.stopBetweenSamples">false</stringProp>
+          <stringProp name="JMSSampler.durableSubscriptionId"></stringProp>
+          <stringProp name="JMSSampler.clientId"></stringProp>
+          <stringProp name="JMSSampler.username"></stringProp>
+          <stringProp name="JMSSampler.password"></stringProp>
+        </JMSPublisher>
+        <hashTree/>
+        
+        <!-- JMS Subscriber to read message from reply queue -->
+        <JMSSubscriber guiclass="JMSSubscriberGui" testclass="JMSSubscriber" testname="JMS Subscriber" enabled="true">
+          <stringProp name="JMSSampler.queueconnectionfactory">myQueueConnectionFactory</stringProp>
+          <stringProp name="JMSSampler.topic">false</stringProp>
+          <stringProp name="JMSSampler.destination">myReplyQueue</stringProp>
+          <stringProp name="JMSSampler.clientId"></stringProp>
+          <stringProp name="JMSSampler.durableSubscriptionId"></stringProp>
+          <stringProp name="JMSSampler.useSelector">false</stringProp>
+          <stringProp name="JMSSampler.messageSelector"></stringProp>
+          <stringProp name="JMSSampler.timeout">10000</stringProp>
+        </JMSSubscriber>
+        <hashTree>
+          <!-- Response Assertion to verify content (Optional) -->
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Response Assertion" enabled="true">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp name="67696">Expected Response Text</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.custom_message"></stringProp>
+            <stringProp name="Assertion.test_field">Assertion.response_data</stringProp>
+            <boolProp name="Assertion.assume_success">false</boolProp>
+            <intProp name="Assertion.test_type">2</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+        </hashTree>
+        
+        <!-- Add a Listener (optional) -->
+        <ViewResultsTree guiclass="ViewResultsFullVisualizer" testclass="ViewResultsTree" testname="View Results Tree" enabled="true"/>
+        <hashTree/>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>
