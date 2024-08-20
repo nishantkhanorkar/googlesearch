@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Plan" enabled="true">
+      <stringProp name="TestPlan.comments"></stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+      <stringProp name="TestPlan.user_define_classpath"></stringProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">1</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">1</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">1</stringProp>
+        <longProp name="ThreadGroup.start_time">-1</longProp>
+        <longProp name="ThreadGroup.end_time">-1</longProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+        <stringProp name="ThreadGroup.duration"></stringProp>
+        <stringProp name="ThreadGroup.delay"></stringProp>
+      </ThreadGroup>
+      <hashTree>
+        <com.ibm.jmeter.protocol.jms.sampler.JMSSampler guiclass="com.ibm.jmeter.protocol.jms.control.gui.JMSSamplerGui" testclass="com.ibm.jmeter.protocol.jms.sampler.JMSSampler" testname="JMS Publisher Sampler" enabled="true">
+          <stringProp name="JMSSampler.queueConnectionFactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
+          <stringProp name="JMSSampler.topic">false</stringProp>
+          <stringProp name="JMSSampler.destination">AST.QP.ALL.ACCSERV.VALUE.REQ</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.channel">ASVUT_NOSSL.TESTHUB</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.port">1212</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.queueManager">TESTHUB</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.hostName">192.168.1.1</stringProp>
+          <stringProp name="JMSSampler.textMessage">this is test message</stringProp>
+        </com.ibm.jmeter.protocol.jms.sampler.JMSSampler>
+        <hashTree/>
+        <com.ibm.jmeter.protocol.jms.sampler.JMSSampler guiclass="com.ibm.jmeter.protocol.jms.control.gui.JMSSamplerGui" testclass="com.ibm.jmeter.protocol.jms.sampler.JMSSampler" testname="JMS Subscriber Sampler" enabled="true">
+          <stringProp name="JMSSampler.queueConnectionFactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
+          <stringProp name="JMSSampler.topic">false</stringProp>
+          <stringProp name="JMSSampler.destination">AST.QP.ALL.PYMT.VALUE.RES</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.channel">ASVUT_NOSSL.TESTHUB</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.port">1212</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.queueManager">TESTHUB</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.hostName">192.168.1.1</stringProp>
+        </com.ibm.jmeter.protocol.jms.sampler.JMSSampler>
+        <hashTree/>
+        <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree" enabled="true">
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+          <objProp>
+            <name>saveConfig</name>
+            <value class="SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+              <threadName>true</threadName>
+              <dataType>true</dataType>
+              <encoding>false</encoding>
+              <assertions>true</assertions>
+              <subresults>true</subresults>
+              <responseData>true</responseData>
+              <samplerData>true</samplerData>
+              <xml>true</xml>
+              <fieldNames>true</fieldNames>
+              <responseHeaders>true</responseHeaders>
+              <requestHeaders>true</requestHeaders>
+              <responseDataOnError>true</responseDataOnError>
+              <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+              <assertionsResultsToSave>0</assertionsResultsToSave>
+              <bytes>true</bytes>
+              <sentBytes>true</sentBytes>
+              <encoding>false</encoding>
+            </value>
+          </objProp>
+        </ResultCollector>
+        <hashTree/>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>
