@@ -27,30 +27,26 @@
         <stringProp name="ThreadGroup.delay"></stringProp>
       </ThreadGroup>
       <hashTree>
-        <JMSPublisher guiclass="JMSPublisherGui" testclass="JMSPublisher" testname="JMS Publisher" enabled="true">
-          <stringProp name="JMSSampler.queueConnectionFactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
-          <stringProp name="JMSSampler.useAuth">false</stringProp>
-          <stringProp name="JMSSampler.queue">AST.QP.ALL.ACCSERV.VALUE.REQ</stringProp>
-          <stringProp name="JMSSampler.connectionFactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
-          <stringProp name="JMSSampler.jmsType">Text</stringProp>
-          <stringProp name="JMSSampler.textMessage">this is test message</stringProp>
-          <stringProp name="JMSSampler.configurableParameters">host,port,queueManager,channel</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.host">192.168.1.1</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.port">1212</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.queueManager">TESTHUB</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.channel">ASVUT_NOSSL.TESTHUB</stringProp>
-        </JMSPublisher>
+        <JMSPointToPointSampler guiclass="JMSPointToPointSamplerGui" testclass="JMSPointToPointSampler" testname="JMS Point-to-Point Sampler - Send" enabled="true">
+          <stringProp name="jms.queueconnectionfactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
+          <stringProp name="jms.queue">AST.QP.ALL.ACCSERV.VALUE.REQ</stringProp>
+          <stringProp name="jms.messagetype">Text</stringProp>
+          <stringProp name="jms.textmessage">this is test message</stringProp>
+          <stringProp name="jms.configurableParameters.channel">ASVUT_NOSSL.TESTHUB</stringProp>
+          <stringProp name="jms.configurableParameters.port">1212</stringProp>
+          <stringProp name="jms.configurableParameters.queueManager">TESTHUB</stringProp>
+          <stringProp name="jms.configurableParameters.hostName">192.168.1.1</stringProp>
+        </JMSPointToPointSampler>
         <hashTree/>
-        <JMSSubscriber guiclass="JMSSubscriberGui" testclass="JMSSubscriber" testname="JMS Subscriber" enabled="true">
-          <stringProp name="JMSSampler.queueConnectionFactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
-          <stringProp name="JMSSampler.queue">AST.QP.ALL.PYMT.VALUE.RES</stringProp>
-          <stringProp name="JMSSampler.connectionFactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
-          <stringProp name="JMSSampler.configurableParameters">host,port,queueManager,channel</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.host">192.168.1.1</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.port">1212</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.queueManager">TESTHUB</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.channel">ASVUT_NOSSL.TESTHUB</stringProp>
-        </JMSSubscriber>
+        <JMSPointToPointSampler guiclass="JMSPointToPointSamplerGui" testclass="JMSPointToPointSampler" testname="JMS Point-to-Point Sampler - Receive" enabled="true">
+          <stringProp name="jms.queueconnectionfactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
+          <stringProp name="jms.queue">AST.QP.ALL.PYMT.VALUE.RES</stringProp>
+          <stringProp name="jms.messagetype">Text</stringProp>
+          <stringProp name="jms.configurableParameters.channel">ASVUT_NOSSL.TESTHUB</stringProp>
+          <stringProp name="jms.configurableParameters.port">1212</stringProp>
+          <stringProp name="jms.configurableParameters.queueManager">TESTHUB</stringProp>
+          <stringProp name="jms.configurableParameters.hostName">192.168.1.1</stringProp>
+        </JMSPointToPointSampler>
         <hashTree/>
         <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree" enabled="true">
           <boolProp name="ResultCollector.error_logging">false</boolProp>
