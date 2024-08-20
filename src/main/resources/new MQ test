@@ -27,26 +27,30 @@
         <stringProp name="ThreadGroup.delay"></stringProp>
       </ThreadGroup>
       <hashTree>
-        <com.ibm.jmeter.protocol.jms.sampler.JMSSampler guiclass="com.ibm.jmeter.protocol.jms.control.gui.JMSSamplerGui" testclass="com.ibm.jmeter.protocol.jms.sampler.JMSSampler" testname="JMS Publisher Sampler" enabled="true">
+        <JMSPublisher guiclass="JMSPublisherGui" testclass="JMSPublisher" testname="JMS Publisher" enabled="true">
           <stringProp name="JMSSampler.queueConnectionFactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
-          <stringProp name="JMSSampler.topic">false</stringProp>
-          <stringProp name="JMSSampler.destination">AST.QP.ALL.ACCSERV.VALUE.REQ</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.channel">ASVUT_NOSSL.TESTHUB</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.port">1212</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.queueManager">TESTHUB</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.hostName">192.168.1.1</stringProp>
+          <stringProp name="JMSSampler.useAuth">false</stringProp>
+          <stringProp name="JMSSampler.queue">AST.QP.ALL.ACCSERV.VALUE.REQ</stringProp>
+          <stringProp name="JMSSampler.connectionFactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
+          <stringProp name="JMSSampler.jmsType">Text</stringProp>
           <stringProp name="JMSSampler.textMessage">this is test message</stringProp>
-        </com.ibm.jmeter.protocol.jms.sampler.JMSSampler>
-        <hashTree/>
-        <com.ibm.jmeter.protocol.jms.sampler.JMSSampler guiclass="com.ibm.jmeter.protocol.jms.control.gui.JMSSamplerGui" testclass="com.ibm.jmeter.protocol.jms.sampler.JMSSampler" testname="JMS Subscriber Sampler" enabled="true">
-          <stringProp name="JMSSampler.queueConnectionFactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
-          <stringProp name="JMSSampler.topic">false</stringProp>
-          <stringProp name="JMSSampler.destination">AST.QP.ALL.PYMT.VALUE.RES</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.channel">ASVUT_NOSSL.TESTHUB</stringProp>
+          <stringProp name="JMSSampler.configurableParameters">host,port,queueManager,channel</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.host">192.168.1.1</stringProp>
           <stringProp name="JMSSampler.configurableParameters.port">1212</stringProp>
           <stringProp name="JMSSampler.configurableParameters.queueManager">TESTHUB</stringProp>
-          <stringProp name="JMSSampler.configurableParameters.hostName">192.168.1.1</stringProp>
-        </com.ibm.jmeter.protocol.jms.sampler.JMSSampler>
+          <stringProp name="JMSSampler.configurableParameters.channel">ASVUT_NOSSL.TESTHUB</stringProp>
+        </JMSPublisher>
+        <hashTree/>
+        <JMSSubscriber guiclass="JMSSubscriberGui" testclass="JMSSubscriber" testname="JMS Subscriber" enabled="true">
+          <stringProp name="JMSSampler.queueConnectionFactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
+          <stringProp name="JMSSampler.queue">AST.QP.ALL.PYMT.VALUE.RES</stringProp>
+          <stringProp name="JMSSampler.connectionFactory">com.ibm.mq.jms.MQQueueConnectionFactory</stringProp>
+          <stringProp name="JMSSampler.configurableParameters">host,port,queueManager,channel</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.host">192.168.1.1</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.port">1212</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.queueManager">TESTHUB</stringProp>
+          <stringProp name="JMSSampler.configurableParameters.channel">ASVUT_NOSSL.TESTHUB</stringProp>
+        </JMSSubscriber>
         <hashTree/>
         <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree" enabled="true">
           <boolProp name="ResultCollector.error_logging">false</boolProp>
