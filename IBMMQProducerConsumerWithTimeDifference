@@ -1,0 +1,122 @@
+import com.ibm.mq.jms.MQConnectionFactory;
+import javax.jms.*;
+import java.time.Instant;
+import java.time.Duration;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class IBMMQProducerConsumerWithTimeDifference {
+
+    // Store reference to sent messages based on clientReferenceId and timestamp
+    private static ConcurrentHashMap<String, Instant> requestMap = new ConcurrentHashMap<>();
+
+    // IBM MQ connection factory and queue configurations
+    private static MQConnectionFactory connectionFactory;
+    private static Queue requestQueue;
+    private static Queue responseQueue;
+
+    public static void main(String[] args) throws Exception {
+        // Create and configure MQConnectionFactory for IBM MQ
+        connectionFactory = new MQConnectionFactory();
+        connectionFactory.setHostName("localhost");           // IBM MQ host
+        connectionFactory.setPort(1414);                      // Port
+        connectionFactory.setQueueManager("QM1");             // Queue Manager
+        connectionFactory.setChannel("SYSTEM.DEF.SVRCONN");   // Channel name
+        connectionFactory.setTransportType(JMSC.MQJMS_TP_CLIENT_MQ_TCPIP);
+
+        // Lookup the queues or create them programmatically
+        requestQueue = new com.ibm.mq.jms.MQQueue("REQUEST.QUEUE");
+        responseQueue = new com.ibm.mq.jms.MQQueue("RESPONSE.QUEUE");
+
+        // Start consumer to run for 1 hour and calculate time differences
+        startConsumer();
+
+        // Simulate the producer sending 80,000 messages with a reference ID and timestamp
+        sendMessages(80000);  // Send 80,000 messages
+    }
+
+    // Function to send multiple messages with unique clientReferenceId
+    public static void sendMessages(int totalMessages) throws JMSException {
+        try (Connection connection = connectionFactory.createConnection();
+             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE)) {
+
+            MessageProducer producer = session.createProducer(requestQueue);
+
+            // Loop to send 80,000 messages
+            for (int i = 1; i <= totalMessages; i++) {
+                String clientReferenceId = "ClientRef-" + i;
+                String messageContent = "Message Content for " + clientReferenceId;
+                Instant sentTime = Instant.now();  // Record the time the message is sent
+
+                // Store the clientReferenceId and sent time in the map
+                requestMap.put(clientReferenceId, sentTime);
+
+                // Create a new text message
+                TextMessage message = session.createTextMessage(messageContent);
+
+                // Set clientReferenceId and sentTimestamp in the message properties
+                message.setStringProperty("clientReferenceId", clientReferenceId);
+                message.setLongProperty("sentTimestamp", sentTime.toEpochMilli());
+
+                // Send the message
+                producer.send(message);
+
+                // Output progress for every 10,000 messages sent
+                if (i % 10000 == 0) {
+                    System.out.println("Sent " + i + " messages.");
+                }
+
+                // Optional: Introduce a slight delay between message sends (e.g., 1 millisecond)
+                // Thread.sleep(1); // Uncomment if needed to simulate some delay
+            }
+
+            System.out.println("Finished sending " + totalMessages + " messages.");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Function to start a consumer that listens for 1 hour and calculates the time difference
+    public static void startConsumer() throws JMSException {
+        new Thread(() -> {
+            try (Connection connection = connectionFactory.createConnection();
+                 Session session = connection.createSession(false, Session.CLIENT_ACKNOWLEDGE)) {
+
+                // Create a consumer for the request queue
+                MessageConsumer consumer = session.createConsumer(requestQueue);
+                connection.start();  // Start connection to listen for messages
+
+                System.out.println("Consumer started, listening for responses...");
+
+                Instant endTime = Instant.now().plus(Duration.ofHours(1));  // Set the consumer to run for 1 hour
+
+                while (Instant.now().isBefore(endTime)) {
+                    // Receive message from the request queue
+                    Message message = consumer.receive(5000);  // 5 seconds timeout
+                    if (message instanceof TextMessage) {
+                        TextMessage textMessage = (TextMessage) message;
+
+                        // Retrieve clientReferenceId and sentTimestamp
+                        String clientReferenceId = textMessage.getStringProperty("clientReferenceId");
+                        long sentTimestamp = textMessage.getLongProperty("sentTimestamp");
+
+                        // Calculate time difference between sent and received time
+                        Instant sentTime = Instant.ofEpochMilli(sentTimestamp);
+                        Instant receivedTime = Instant.now();
+                        Duration timeDifference = Duration.between(sentTime, receivedTime);
+
+                        // Print the result
+                        System.out.println("Received message with ClientReferenceId: " + clientReferenceId);
+                        System.out.println("Time difference between sent and received: " + timeDifference.toMillis() + " ms");
+
+                        // Acknowledge the message after successful processing
+                        message.acknowledge();
+                    }
+                }
+                System.out.println("Consumer has stopped after 1 hour.");
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+}
