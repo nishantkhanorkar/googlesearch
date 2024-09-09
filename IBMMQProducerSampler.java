@@ -1,36 +1,48 @@
+import javax.jms.Connection;
+import javax.jms.MessageProducer;
+import javax.jms.Queue;
+import javax.jms.QueueConnectionFactory;
+import javax.jms.Session;
+import javax.jms.TextMessage;
+import javax.jms.JMSException;
+
 import org.apache.jmeter.config.Arguments;
 import org.apache.jmeter.samplers.AbstractJavaSamplerClient;
 import org.apache.jmeter.samplers.JavaSamplerContext;
 import org.apache.jmeter.samplers.SampleResult;
 
-import java.util.concurrent.ConcurrentHashMap;
+import com.ibm.mq.jms.MQQueueConnectionFactory;
+import com.ibm.mq.jms.MQQueue;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.CountDownLatch;
 
 public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
 
-    private ConcurrentHashMap<String, Long> messageTracker = new ConcurrentHashMap<>();
     private ExecutorService executorService;
-    private MQSender mqSender;
     private int numberOfMessages;
     private int threads;
     private String messageContent;
-
+    private String queueManager;
+    private String hostname;
+    private int port;
+    private String channel;
+    private String requestQueue;
+    
     @Override
     public void setupTest(JavaSamplerContext context) {
-        // Set up parameters from JMeter GUI
-        String queueManager = context.getParameter("queueManager");
-        String hostname = context.getParameter("hostname");
-        int port = Integer.parseInt(context.getParameter("port"));
-        String channel = context.getParameter("channel");
-        String requestQueue = context.getParameter("requestQueue");
+        // Retrieve parameters from JMeter GUI
+        queueManager = context.getParameter("queueManager");
+        hostname = context.getParameter("hostname");
+        port = Integer.parseInt(context.getParameter("port"));
+        channel = context.getParameter("channel");
+        requestQueue = context.getParameter("requestQueue");
         numberOfMessages = Integer.parseInt(context.getParameter("numberOfMessages"));
         threads = Integer.parseInt(context.getParameter("threads"));
-        messageContent = context.getParameter("message");  // Retrieve the message content
+        messageContent = context.getParameter("message");
 
-        mqSender = new MQSender(queueManager, hostname, port, channel, requestQueue);
-        executorService = Executors.newFixedThreadPool(threads);  // Configurable threads
+        executorService = Executors.newFixedThreadPool(threads);
     }
 
     @Override
@@ -43,7 +55,7 @@ public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
         args.addArgument("requestQueue", "REQUEST.QUEUE");
         args.addArgument("numberOfMessages", "80000");
         args.addArgument("threads", "10");
-        args.addArgument("message", "{\"message\": \"This is a message\", \"clientReferenceId\": \"uniqueClientRefId\"}");
+        args.addArgument("message", "{\"message\": \"This is message\", \"clientReferenceId\": \"uniqueClientReferenceId\"}");
         return args;
     }
 
@@ -54,22 +66,36 @@ public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
 
         try {
             CountDownLatch latch = new CountDownLatch(numberOfMessages);
+            MQQueueConnectionFactory factory = new MQQueueConnectionFactory();
+            factory.setHostName(hostname);
+            factory.setPort(port);
+            factory.setQueueManager(queueManager);
+            factory.setChannel(channel);
+            factory.setTransportType(1);  // Set TCP/IP transport type
 
             for (int i = 0; i < numberOfMessages; i++) {
                 final String clientReferenceId = "clientRef_" + i;
-                String message = messageContent.replace("uniqueClientRefId", clientReferenceId);  // Replace with unique clientReferenceId
-                messageTracker.put(clientReferenceId, System.currentTimeMillis());
+                String message = messageContent.replace("uniqueClientReferenceId", clientReferenceId);
 
                 executorService.submit(() -> {
-                    try {
-                        mqSender.sendMessage(message);  // Send message with clientReferenceId
+                    try (Connection connection = factory.createQueueConnection();
+                         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE)) {
+
+                        Queue queue = session.createQueue(requestQueue);
+                        MessageProducer producer = session.createProducer(queue);
+
+                        TextMessage textMessage = session.createTextMessage(message);
+                        producer.send(textMessage);
+
+                    } catch (JMSException e) {
+                        e.printStackTrace();
                     } finally {
                         latch.countDown();
                     }
                 });
             }
 
-            latch.await();  // Wait until all messages are sent
+            latch.await();  // Wait for all threads to finish sending messages
             result.setSuccessful(true);
         } catch (Exception e) {
             result.setSuccessful(false);
