@@ -1,7 +1,8 @@
+import com.ibm.mq.jms.MQQueueConnectionFactory;
+import com.ibm.mq.jms.MQQueue;
 import javax.jms.Connection;
 import javax.jms.MessageProducer;
 import javax.jms.Queue;
-import javax.jms.QueueConnectionFactory;
 import javax.jms.Session;
 import javax.jms.TextMessage;
 import javax.jms.JMSException;
@@ -10,9 +11,6 @@ import org.apache.jmeter.config.Arguments;
 import org.apache.jmeter.samplers.AbstractJavaSamplerClient;
 import org.apache.jmeter.samplers.JavaSamplerContext;
 import org.apache.jmeter.samplers.SampleResult;
-
-import com.ibm.mq.jms.MQQueueConnectionFactory;
-import com.ibm.mq.jms.MQQueue;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -29,7 +27,7 @@ public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
     private int port;
     private String channel;
     private String requestQueue;
-    
+
     @Override
     public void setupTest(JavaSamplerContext context) {
         // Retrieve parameters from JMeter GUI
@@ -66,7 +64,7 @@ public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
 
         try {
             CountDownLatch latch = new CountDownLatch(numberOfMessages);
-            MQQueueConnectionFactory factory = new MQQueueConnectionFactory();
+            final MQQueueConnectionFactory factory = new MQQueueConnectionFactory();
             factory.setHostName(hostname);
             factory.setPort(port);
             factory.setQueueManager(queueManager);
@@ -75,22 +73,42 @@ public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
 
             for (int i = 0; i < numberOfMessages; i++) {
                 final String clientReferenceId = "clientRef_" + i;
-                String message = messageContent.replace("uniqueClientReferenceId", clientReferenceId);
+                final String message = messageContent.replace("uniqueClientReferenceId", clientReferenceId);
 
-                executorService.submit(() -> {
-                    try (Connection connection = factory.createQueueConnection();
-                         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE)) {
+                executorService.submit(new Runnable() {
+                    @Override
+                    public void run() {
+                        Connection connection = null;
+                        Session session = null;
+                        try {
+                            connection = factory.createQueueConnection();
+                            connection.start();
+                            session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+                            Queue queue = session.createQueue(requestQueue);
+                            MessageProducer producer = session.createProducer(queue);
 
-                        Queue queue = session.createQueue(requestQueue);
-                        MessageProducer producer = session.createProducer(queue);
+                            TextMessage textMessage = session.createTextMessage(message);
+                            producer.send(textMessage);
 
-                        TextMessage textMessage = session.createTextMessage(message);
-                        producer.send(textMessage);
-
-                    } catch (JMSException e) {
-                        e.printStackTrace();
-                    } finally {
-                        latch.countDown();
+                        } catch (JMSException e) {
+                            e.printStackTrace();
+                        } finally {
+                            if (session != null) {
+                                try {
+                                    session.close();
+                                } catch (JMSException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                            if (connection != null) {
+                                try {
+                                    connection.close();
+                                } catch (JMSException e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                            latch.countDown();
+                        }
                     }
                 });
             }
