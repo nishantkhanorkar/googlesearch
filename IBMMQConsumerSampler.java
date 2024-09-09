@@ -1,30 +1,33 @@
+import com.ibm.mq.jms.MQQueueConnectionFactory;
+import com.ibm.mq.jms.MQQueue;
+import javax.jms.Connection;
+import javax.jms.MessageConsumer;
+import javax.jms.Queue;
+import javax.jms.Session;
+import javax.jms.TextMessage;
+import javax.jms.JMSException;
+
 import org.apache.jmeter.config.Arguments;
 import org.apache.jmeter.samplers.AbstractJavaSamplerClient;
 import org.apache.jmeter.samplers.JavaSamplerContext;
 import org.apache.jmeter.samplers.SampleResult;
 
-import java.util.concurrent.ConcurrentHashMap;
-
 public class IBMMQConsumerSampler extends AbstractJavaSamplerClient {
 
-    private ConcurrentHashMap<String, Long> messageTracker;
-    private int numberOfMessages;
-    private MQReceiver mqReceiver;
-    private long[] timeDifferences;
+    private String queueManager;
+    private String hostname;
+    private int port;
+    private String channel;
+    private String responseQueue;
 
     @Override
     public void setupTest(JavaSamplerContext context) {
-        // Set up parameters from JMeter GUI
-        String queueManager = context.getParameter("queueManager");
-        String hostname = context.getParameter("hostname");
-        int port = Integer.parseInt(context.getParameter("port"));
-        String channel = context.getParameter("channel");
-        String responseQueue = context.getParameter("responseQueue");
-        numberOfMessages = Integer.parseInt(context.getParameter("numberOfMessages"));
-
-        mqReceiver = new MQReceiver(queueManager, hostname, port, channel, responseQueue);
-        messageTracker = new ConcurrentHashMap<>();
-        timeDifferences = new long[numberOfMessages];
+        // Retrieve parameters from JMeter GUI
+        queueManager = context.getParameter("queueManager");
+        hostname = context.getParameter("hostname");
+        port = Integer.parseInt(context.getParameter("port"));
+        channel = context.getParameter("channel");
+        responseQueue = context.getParameter("responseQueue");
     }
 
     @Override
@@ -35,7 +38,6 @@ public class IBMMQConsumerSampler extends AbstractJavaSamplerClient {
         args.addArgument("port", "1414");
         args.addArgument("channel", "CHANNEL");
         args.addArgument("responseQueue", "RESPONSE.QUEUE");
-        args.addArgument("numberOfMessages", "80000");
         return args;
     }
 
@@ -45,21 +47,44 @@ public class IBMMQConsumerSampler extends AbstractJavaSamplerClient {
         result.sampleStart();  // Start timing
 
         try {
-            int receivedMessages = 0;
+            MQQueueConnectionFactory factory = new MQQueueConnectionFactory();
+            factory.setHostName(hostname);
+            factory.setPort(port);
+            factory.setQueueManager(queueManager);
+            factory.setChannel(channel);
+            factory.setTransportType(1);  // Set TCP/IP transport type
 
-            while (receivedMessages < numberOfMessages) {
-                String responseMessage = mqReceiver.receiveMessage();  // Receive response message
-                
-                // Parse response JSON to extract clientReferenceId
-                String clientReferenceId = extractClientReferenceId(responseMessage);
+            Connection connection = null;
+            Session session = null;
+            try {
+                connection = factory.createQueueConnection();
+                connection.start();
+                session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+                Queue queue = session.createQueue(responseQueue);
+                MessageConsumer consumer = session.createConsumer(queue);
 
-                if (clientReferenceId != null) {
-                    Long sentTime = messageTracker.remove(clientReferenceId);
-                    if (sentTime != null) {
-                        long receivedTime = System.currentTimeMillis();
-                        timeDifferences[receivedMessages] = receivedTime - sentTime;
-                        receivedMessages++;
-                        System.out.println("Message: " + clientReferenceId + " received, Time Difference: " + timeDifferences[receivedMessages - 1] + "ms");
+                TextMessage receivedMessage = (TextMessage) consumer.receive(1000);  // Timeout in milliseconds
+
+                if (receivedMessage != null) {
+                    String messageText = receivedMessage.getText();  // Extract message text
+                    // Do something with the received message
+                }
+
+            } catch (JMSException e) {
+                e.printStackTrace();
+            } finally {
+                if (session != null) {
+                    try {
+                        session.close();
+                    } catch (JMSException e) {
+                        e.printStackTrace();
+                    }
+                }
+                if (connection != null) {
+                    try {
+                        connection.close();
+                    } catch (JMSException e) {
+                        e.printStackTrace();
                     }
                 }
             }
@@ -73,16 +98,5 @@ public class IBMMQConsumerSampler extends AbstractJavaSamplerClient {
         }
 
         return result;
-    }
-
-    private String extractClientReferenceId(String jsonMessage) {
-        // Assume the message is in JSON format and parse clientReferenceId from it
-        // Use a JSON library (like org.json or Jackson) to extract clientReferenceId
-        try {
-            org.json.JSONObject jsonObject = new org.json.JSONObject(jsonMessage);
-            return jsonObject.getString("clientReferenceId");
-        } catch (org.json.JSONException e) {
-            return null;
-        }
     }
 }
