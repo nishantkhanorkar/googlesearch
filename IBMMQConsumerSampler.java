@@ -113,4 +113,11 @@ public class IBMMQConsumerSampler extends AbstractJavaSamplerClient {
         return result;
     }
 
-    private String extractClientReferenceId(String message
+    private String extractClientReferenceId(String messageText) {
+        // Simple extraction logic (modify this based on actual message format)
+        String clientRefPrefix = "\"clientReferenceId\": \"";
+        int start = messageText.indexOf(clientRefPrefix) + clientRefPrefix.length();
+        int end = messageText.indexOf("\"", start);
+        return messageText.substring(start, end);
+    }
+
