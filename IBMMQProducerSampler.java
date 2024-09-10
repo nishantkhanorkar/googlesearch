@@ -14,6 +14,7 @@ import org.apache.jmeter.samplers.SampleResult;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 
 public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
@@ -27,6 +28,9 @@ public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
     private int port;
     private String channel;
     private String requestQueue;
+    private String replyToQueue;
+    private String clientReferenceId;
+    private static ConcurrentHashMap<String, Long> messageSentTimeMap = new ConcurrentHashMap<String, Long>();  // Stores clientReferenceId and the time message was sent
 
     @Override
     public void setupTest(JavaSamplerContext context) {
@@ -36,9 +40,11 @@ public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
         port = Integer.parseInt(context.getParameter("port"));
         channel = context.getParameter("channel");
         requestQueue = context.getParameter("requestQueue");
+        replyToQueue = context.getParameter("replyToQueue");
         numberOfMessages = Integer.parseInt(context.getParameter("numberOfMessages"));
         threads = Integer.parseInt(context.getParameter("threads"));
         messageContent = context.getParameter("message");
+        clientReferenceId = context.getParameter("clientReferenceId");
 
         executorService = Executors.newFixedThreadPool(threads);
     }
@@ -51,9 +57,11 @@ public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
         args.addArgument("port", "1414");
         args.addArgument("channel", "CHANNEL");
         args.addArgument("requestQueue", "REQUEST.QUEUE");
+        args.addArgument("replyToQueue", "REPLY.QUEUE");
         args.addArgument("numberOfMessages", "80000");
         args.addArgument("threads", "10");
         args.addArgument("message", "{\"message\": \"This is message\", \"clientReferenceId\": \"uniqueClientReferenceId\"}");
+        args.addArgument("clientReferenceId", "clientRefId");  // Example default clientReferenceId
         return args;
     }
 
@@ -72,8 +80,8 @@ public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
             factory.setTransportType(1);  // Set TCP/IP transport type
 
             for (int i = 0; i < numberOfMessages; i++) {
-                final String clientReferenceId = "clientRef_" + i;
-                final String message = messageContent.replace("uniqueClientReferenceId", clientReferenceId);
+                final String uniqueClientReferenceId = clientReferenceId + "_" + i;
+                final String message = messageContent.replace("uniqueClientReferenceId", uniqueClientReferenceId);
 
                 executorService.submit(new Runnable() {
                     @Override
@@ -88,6 +96,14 @@ public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
                             MessageProducer producer = session.createProducer(queue);
 
                             TextMessage textMessage = session.createTextMessage(message);
+
+                            // Set ReplyTo queue
+                            Queue replyQueue = session.createQueue(replyToQueue);
+                            textMessage.setJMSReplyTo(replyQueue);
+
+                            // Store the time message is sent in ConcurrentHashMap
+                            messageSentTimeMap.put(uniqueClientReferenceId, System.currentTimeMillis());
+
                             producer.send(textMessage);
 
                         } catch (JMSException e) {
@@ -128,5 +144,9 @@ public class IBMMQProducerSampler extends AbstractJavaSamplerClient {
     @Override
     public void teardownTest(JavaSamplerContext context) {
         executorService.shutdown();
+    }
+
+    public static ConcurrentHashMap<String, Long> getMessageSentTimeMap() {
+        return messageSentTimeMap;
     }
 }
