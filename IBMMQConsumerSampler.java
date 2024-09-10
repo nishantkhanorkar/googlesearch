@@ -12,6 +12,8 @@ import org.apache.jmeter.samplers.AbstractJavaSamplerClient;
 import org.apache.jmeter.samplers.JavaSamplerContext;
 import org.apache.jmeter.samplers.SampleResult;
 
+import java.util.concurrent.ConcurrentHashMap;
+
 public class IBMMQConsumerSampler extends AbstractJavaSamplerClient {
 
     private String queueManager;
@@ -67,7 +69,18 @@ public class IBMMQConsumerSampler extends AbstractJavaSamplerClient {
 
                 if (receivedMessage != null) {
                     String messageText = receivedMessage.getText();  // Extract message text
-                    // Do something with the received message
+                    String clientReferenceId = extractClientReferenceId(messageText);  // Extract clientReferenceId from message
+
+                    // Get the time when the corresponding message was sent
+                    Long sentTime = IBMMQProducerSampler.getMessageSentTimeMap().get(clientReferenceId);
+
+                    if (sentTime != null) {
+                        long receivedTime = System.currentTimeMillis();
+                        long timeDifference = receivedTime - sentTime;
+                        result.setResponseMessage("Message with clientReferenceId: " + clientReferenceId + " took " + timeDifference + " ms to receive.");
+                    } else {
+                        result.setResponseMessage("No corresponding sent message found for clientReferenceId: " + clientReferenceId);
+                    }
                 }
 
             } catch (JMSException e) {
@@ -99,4 +112,5 @@ public class IBMMQConsumerSampler extends AbstractJavaSamplerClient {
 
         return result;
     }
-}
+
+    private String extractClientReferenceId(String message
