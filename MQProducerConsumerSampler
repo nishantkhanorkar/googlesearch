@@ -6,15 +6,15 @@ import org.apache.jmeter.samplers.SampleResult;
 
 import javax.jms.*;
 import com.ibm.mq.jms.MQQueueConnectionFactory;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-public class MQProducerConsumerSampler2 extends AbstractJavaSamplerClient {
+public class MQProducerConsumerSampler extends AbstractJavaSamplerClient {
 
     // MQ Connection Details
     private String queueManager;
@@ -24,6 +24,7 @@ public class MQProducerConsumerSampler2 extends AbstractJavaSamplerClient {
     private String requestQueue;
     private String responseQueue;
     private String clientReferenceId;
+    private String message;
     private int numberOfMessages;
 
     // JMS objects
@@ -32,6 +33,9 @@ public class MQProducerConsumerSampler2 extends AbstractJavaSamplerClient {
     private MessageProducer producer;
     private MessageConsumer consumer;
     private ExecutorService executor;
+
+    // To store the time when each message was sent
+    private Map<String, Long> sentMessages = new HashMap<>();
 
     @Override
     public void setupTest(JavaSamplerContext context) {
@@ -42,6 +46,7 @@ public class MQProducerConsumerSampler2 extends AbstractJavaSamplerClient {
         requestQueue = context.getParameter("requestQueue");
         responseQueue = context.getParameter("responseQueue");
         clientReferenceId = context.getParameter("clientReferenceId");
+        message = context.getParameter("message");
         numberOfMessages = Integer.parseInt(context.getParameter("numberOfMessages", "1")); // Default to 1
 
         try {
@@ -73,7 +78,7 @@ public class MQProducerConsumerSampler2 extends AbstractJavaSamplerClient {
         SampleResult result = new SampleResult();
         result.setSampleLabel("IBM MQ Producer-Consumer Test");
 
-        List<Long> responseTimes = new ArrayList<>();
+        Map<String, Long> responseTimes = new HashMap<>();
 
         try {
             connection.start();  // Start connection for consumer
@@ -81,12 +86,15 @@ public class MQProducerConsumerSampler2 extends AbstractJavaSamplerClient {
 
             Callable<Void> producerTask = () -> {
                 for (int i = 0; i < numberOfMessages; i++) {
+                    String correlationId = clientReferenceId + "-" + i;
                     long messageStartTime = System.currentTimeMillis();
-                    TextMessage message = session.createTextMessage();
-                    message.setText(createMessage(i));
-                    message.setJMSCorrelationID(clientReferenceId + "-" + i);  // Unique correlation ID
-                    producer.send(message);
-                    responseTimes.add(messageStartTime); // Store start time for each message
+                    
+                    TextMessage messageToSend = session.createTextMessage();
+                    messageToSend.setText(String.format(message, i));
+                    messageToSend.setJMSCorrelationID(correlationId);  // Unique correlation ID
+                    
+                    producer.send(messageToSend);
+                    sentMessages.put(correlationId, messageStartTime); // Store start time with correlation ID
                 }
                 return null;
             };
@@ -95,10 +103,14 @@ public class MQProducerConsumerSampler2 extends AbstractJavaSamplerClient {
                 for (int i = 0; i < numberOfMessages; i++) {
                     Message responseMessage = consumer.receive(5000);  // 5 seconds timeout
                     if (responseMessage != null && responseMessage instanceof TextMessage) {
+                        String correlationId = responseMessage.getJMSCorrelationID();
                         long messageEndTime = System.currentTimeMillis();
-                        long messageStartTime = responseTimes.get(i);
-                        long responseTime = messageEndTime - messageStartTime; // Calculate time difference
-                        responseTimes.set(i, responseTime); // Update list with response time
+                        Long messageStartTime = sentMessages.get(correlationId);
+                        
+                        if (messageStartTime != null) {
+                            long responseTime = messageEndTime - messageStartTime; // Calculate time difference
+                            responseTimes.put(correlationId, responseTime); // Store response time with correlation ID
+                        }
                     }
                 }
                 return null;
@@ -114,7 +126,7 @@ public class MQProducerConsumerSampler2 extends AbstractJavaSamplerClient {
             result.sampleEnd(); // End tracking total time
 
             // Calculate average response time
-            long totalResponseTime = responseTimes.stream().mapToLong(Long::longValue).sum();
+            long totalResponseTime = responseTimes.values().stream().mapToLong(Long::longValue).sum();
             long averageResponseTime = totalResponseTime / numberOfMessages;
 
             // Set response data to show number of messages and average response time
@@ -127,11 +139,6 @@ public class MQProducerConsumerSampler2 extends AbstractJavaSamplerClient {
         }
 
         return result;
-    }
-
-    private String createMessage(int index) {
-        // Create the custom JSON message with the clientReferenceId for correlation
-        return "{\"clientReferenceId\": \"" + clientReferenceId + "-" + index + "\", \"field1\": \"value1\", \"field2\": \"value2\"}";
     }
 
     @Override
