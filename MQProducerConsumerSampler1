@@ -1,0 +1,181 @@
+package com.example.jmeter.mqplugin;
+
+import org.apache.jmeter.protocol.java.sampler.AbstractJavaSamplerClient;
+import org.apache.jmeter.protocol.java.sampler.JavaSamplerContext;
+import org.apache.jmeter.samplers.SampleResult;
+
+import javax.jms.*;
+import com.ibm.mq.jms.MQQueueConnectionFactory;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.*;
+
+public class MQProducerConsumerSampler1 extends AbstractJavaSamplerClient {
+
+    // MQ Connection Details
+    private String queueManager;
+    private String hostname;
+    private int port;
+    private String channel;
+    private String requestQueue;
+    private String responseQueue;
+    private String clientReferenceId;
+    private String message;
+    private int numberOfMessages;
+
+    // JMS objects
+    private Connection connection;
+    private Session session;
+    private MessageProducer producer;
+    private MessageConsumer consumer;
+    private ExecutorService executor;
+
+    // To store sent messages with timestamps and received messages with timestamps
+    private Map<String, Long> sentMessages = new ConcurrentHashMap<>();
+    private Map<String, Long> receivedMessages = new ConcurrentHashMap<>();
+
+    @Override
+    public void setupTest(JavaSamplerContext context) {
+        queueManager = context.getParameter("queueManager");
+        hostname = context.getParameter("hostname");
+        port = Integer.parseInt(context.getParameter("port"));
+        channel = context.getParameter("channel");
+        requestQueue = context.getParameter("requestQueue");
+        responseQueue = context.getParameter("responseQueue");
+        clientReferenceId = context.getParameter("clientReferenceId");
+        message = context.getParameter("message");
+        numberOfMessages = Integer.parseInt(context.getParameter("numberOfMessages", "1")); // Default to 1
+
+        try {
+            MQQueueConnectionFactory factory = new MQQueueConnectionFactory();
+            factory.setQueueManager(queueManager);
+            factory.setHostName(hostname);
+            factory.setPort(port);
+            factory.setChannel(channel);
+            factory.setTransportType(1);  // Bind to IBM MQ transport
+
+            connection = factory.createConnection();
+            session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+            Queue requestQ = session.createQueue(requestQueue);
+            producer = session.createProducer(requestQ);
+
+            Queue responseQ = session.createQueue(responseQueue);
+            consumer = session.createConsumer(responseQ);
+
+            executor = Executors.newFixedThreadPool(2); // Two threads: one for producer and one for consumer
+
+        } catch (JMSException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public SampleResult runTest(JavaSamplerContext context) {
+        // Final combined sample result
+        SampleResult finalResult = new SampleResult();
+        finalResult.setSampleLabel("IBM MQ Producer-Consumer Test");
+
+        try {
+            connection.start();  // Start connection for consumer
+
+            // Producer Task
+            Callable<Void> producerTask = () -> {
+                for (int i = 0; i < numberOfMessages; i++) {
+                    String correlationId = clientReferenceId + "-" + i;
+                    long messageStartTime = System.currentTimeMillis();
+
+                    // Create the message to send
+                    TextMessage messageToSend = session.createTextMessage();
+                    String formattedMessage = String.format(message, i);
+                    messageToSend.setText(formattedMessage);
+                    messageToSend.setJMSCorrelationID(correlationId);  // Unique correlation ID
+                    
+                    producer.send(messageToSend);
+                    sentMessages.put(correlationId, messageStartTime); // Store start time with correlation ID
+                }
+                return null;
+            };
+
+            // Consumer Task
+            Callable<Void> consumerTask = () -> {
+                for (int i = 0; i < numberOfMessages; i++) {
+                    Message responseMessage = consumer.receive(5000);  // 5 seconds timeout
+                    if (responseMessage != null && responseMessage instanceof TextMessage) {
+                        String correlationId = responseMessage.getJMSCorrelationID();
+                        long messageEndTime = System.currentTimeMillis();
+
+                        if (correlationId != null && sentMessages.containsKey(correlationId)) {
+                            receivedMessages.put(correlationId, messageEndTime); // Store received message time
+                        }
+                    }
+                }
+                return null;
+            };
+
+            // Submit the tasks to the executor
+            Future<Void> producerFuture = executor.submit(producerTask);
+            Future<Void> consumerFuture = executor.submit(consumerTask);
+
+            // Wait for all tasks to finish
+            producerFuture.get();
+            consumerFuture.get();
+
+            // Loop over each sent message and generate a sample per message
+            for (Map.Entry<String, Long> entry : sentMessages.entrySet()) {
+                String correlationId = entry.getKey();
+                Long sentTime = entry.getValue();
+                Long receivedTime = receivedMessages.get(correlationId);
+
+                if (receivedTime != null) {
+                    // Create a separate SampleResult per message
+                    SampleResult messageResult = new SampleResult();
+                    messageResult.setSampleLabel("Message: " + correlationId);
+                    messageResult.sampleStart(sentTime);
+                    messageResult.sampleEnd(receivedTime);
+                    messageResult.setSuccessful(true);
+
+                    // Get the sent and received message content
+                    String sentMessage = message.replace("%s", correlationId);  // Formatting message with correlationId
+                    TextMessage receivedTextMessage = (TextMessage) consumer.receive(5000);
+                    String receivedMessage = receivedTextMessage != null ? receivedTextMessage.getText() : "No response message received";
+
+                    long timeDifference = receivedTime - sentTime;
+
+                    // Include both the sent and received messages in the response data
+                    String responseData = "Client Reference: " + correlationId +
+                                          ", Sent Message: " + sentMessage +
+                                          ", Received Message: " + receivedMessage +
+                                          ", Response Time: " + timeDifference + " ms";
+
+                    messageResult.setResponseData(responseData, "UTF-8");
+
+                    // Add each individual sample result to the final result
+                    finalResult.addSubResult(messageResult);
+                }
+            }
+
+            finalResult.setSuccessful(true);
+            finalResult.sampleEnd(); // End tracking total time for the overall test
+
+        } catch (Exception e) {
+            finalResult.setSuccessful(false);
+            finalResult.setResponseMessage("Exception: " + e.getMessage());
+        }
+
+        return finalResult;
+    }
+
+    @Override
+    public void teardownTest(JavaSamplerContext context) {
+        try {
+            if (producer != null) producer.close();
+            if (consumer != null) consumer.close();
+            if (session != null) session.close();
+            if (connection != null) connection.close();
+            if (executor != null) executor.shutdown();
+        } catch (JMSException e) {
+            e.printStackTrace();
+        }
+    }
+}
