@@ -177,5 +177,26 @@ public class MQProducerConsumerSampler1 extends AbstractJavaSamplerClient {
         } catch (JMSException e) {
             e.printStackTrace();
         }
+
+try {
+            // Logging in teardown method
+            BufferedWriter logWriter = new BufferedWriter(new FileWriter("message_log.txt"));
+            for (Map.Entry<String, Long> entry : sentMessages.entrySet()) {
+                String correlationId = entry.getKey();
+                Long sentTime = entry.getValue();
+                Long receivedTime = receivedMessages.get(correlationId);
+
+                if (receivedTime != null) {
+                    long timeDifference = receivedTime - sentTime;
+                    logWriter.write("Message ID: " + correlationId +
+                                    ", Sent Time: " + sentTime +
+                                    ", Received Time: " + receivedTime +
+                                    ", Time Difference: " + timeDifference + " ms\n");
+                } else {
+                    logWriter.write("Message ID: " + correlationId +
+                                    ", Sent Time: " + sentTime +
+                                    ", Received Time: N/A\n");
+                }
+            }
     }
 }
