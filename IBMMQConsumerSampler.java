@@ -1,56 +1,63 @@
-import org.apache.avro.specific.SpecificRecordBase;
-import org.apache.kafka.clients.consumer.*;
-import org.apache.kafka.common.serialization.ByteArrayDeserializer;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-
-import java.time.Duration;
-import java.util.Collections;
-import java.util.Properties;
-
-public class AvroToPojoToJsonConsumer {
+public class AvroConsumer {
+    private static final ObjectMapper objectMapper = new ObjectMapper()
+        .registerModule(new JavaTimeModule())
+        .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
 
     public static void main(String[] args) {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "avro-pojo-consumer");
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "avro-consumer-v2");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
 
-        KafkaConsumer<String, byte[]> consumer = new KafkaConsumer<>(props);
-        consumer.subscribe(Collections.singletonList("your-avro-topic"));
+        try (KafkaConsumer<String, byte[]> consumer = new KafkaConsumer<>(props)) {
+            consumer.subscribe(Collections.singletonList("your-avro-topic"));
 
-        // Configure Jackson for logical types
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
-        objectMapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
-
-        try {
             while (true) {
                 ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ofMillis(100));
                 for (ConsumerRecord<String, byte[]> record : records) {
                     try {
-                        // Deserialize directly to POJO
-                        AccountTransactionEntity transaction = deserializeAvro(record.value());
-                        
-                        // Convert to JSON
+                        AccountTransactionEntity transaction = safeDeserialize(record.value());
                         String json = objectMapper.writeValueAsString(transaction);
-                        System.out.println("Converted JSON: " + json);
+                        System.out.println("Success: " + json);
                     } catch (Exception e) {
-                        System.err.println("Error processing record: " + e.getMessage());
+                        System.err.printf("Error processing record at offset %d: %s%n",
+                            record.offset(), e.getMessage());
+                        // Add hex dump of problematic record
+                        System.err.println("Record data (hex): " + bytesToHex(record.value()));
                     }
                 }
             }
-        } finally {
-            consumer.close();
         }
     }
 
-    private static AccountTransactionEntity deserializeAvro(byte[] data) throws Exception {
-        // Using SpecificDatumReader with your POJO class
-        SpecificDatumReader<AccountTransactionEntity> reader = new SpecificDatumReader<>(AccountTransactionEntity.class);
-        Decoder decoder = DecoderFactory.get().binaryDecoder(data, null);
-        return reader.read(null, decoder);
+    private static AccountTransactionEntity safeDeserialize(byte[] data) throws Exception {
+        if (data == null || data.length == 0) {
+            throw new IllegalArgumentException("Empty data payload");
+        }
+
+        try {
+            // Try standard Avro first
+            return deserializeAvro(data);
+        } catch (Exception e1) {
+            try {
+                // Fallback to Confluent format if standard fails
+                return deserializeConfluentAvro(data);
+            } catch (Exception e2) {
+                throw new IllegalArgumentException(
+                    String.format("Failed to deserialize as either standard Avro (%s) or Confluent Avro (%s)",
+                        e1.getMessage(), e2.getMessage()));
+            }
+        }
+    }
+
+    // Utility method for debugging
+    private static String bytesToHex(byte[] bytes) {
+        if (bytes == null) return "null";
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x ", b));
+        }
+        return sb.toString();
     }
 }
