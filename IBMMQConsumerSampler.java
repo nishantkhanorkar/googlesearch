@@ -127,3 +127,48 @@ public class AvroSpecificConsumer {
         return sb.toString();
     }
 }
+
+
+
+
+import org.apache.avro.LogicalTypes;
+import org.apache.avro.data.TimeConversions;
+import org.joda.time.LocalDate;
+import org.joda.time.DateTime;
+
+public class AvroLogicalTypeConsumer {
+
+    // Add these conversions to your existing deserialization method
+    private static AccountTransactionEntity deserializeWithLogicalTypes(byte[] data) throws Exception {
+        SpecificDatumReader<AccountTransactionEntity> reader = new SpecificDatumReader<>(
+            AccountTransactionEntity.getClassSchema());
+        
+        // Register logical type conversions
+        reader.getData().addLogicalTypeConversion(new TimeConversions.DateConversion());
+        reader.getData().addLogicalTypeConversion(new TimeConversions.TimestampMillisConversion());
+        
+        Decoder decoder = DecoderFactory.get().binaryDecoder(data, null);
+        return reader.read(null, decoder);
+    }
+
+    // Usage in your consumer loop:
+    AccountTransactionEntity transaction = deserializeWithLogicalTypes(record.value());
+    
+    // Access temporal fields properly
+    LocalDate date = transaction.getTransactionDate();
+    DateTime timestamp = transaction.getTransactionTime();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
