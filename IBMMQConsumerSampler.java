@@ -3,3 +3,127 @@ SpecificDatumReader<AccountTransactionEntity> reader = new SpecificDatumReader<>
 Decoder decoder = DecoderFactory.get().binaryDecoder(
     record.value(), null);
 AccountTransactionEntity transaction = reader.read(null, decoder);
+
+
+
+import io.confluent.kafka.serializers.*;
+import org.apache.avro.*;
+import org.apache.avro.generic.*;
+import org.apache.avro.specific.*;
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.errors.*;
+import org.apache.kafka.common.serialization.*;
+import java.io.*;
+import java.nio.*;
+import java.time.*;
+import java.util.*;
+
+public class AvroSpecificConsumer {
+
+    private static final String TOPIC = "account-transactions";
+    private static final String SCHEMA_REGISTRY_URL = "http://localhost:8081";
+
+    public static void main(String[] args) {
+        // 1. Configure Consumer
+        Properties props = new Properties();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "avro-consumer-group");
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+
+        // 2. Create Consumer and Subscribe
+        KafkaConsumer<String, byte[]> consumer = new KafkaConsumer<>(props);
+        consumer.subscribe(Collections.singletonList(TOPIC));
+
+        // 3. Schema Registry Client
+        CachedSchemaRegistryClient schemaRegistry = new CachedSchemaRegistryClient(
+            SCHEMA_REGISTRY_URL, 
+            100
+        );
+
+        // 4. Main Poll Loop
+        try {
+            while (true) {
+                ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ofMillis(100));
+                for (ConsumerRecord<String, byte[]> record : records) {
+                    try {
+                        // 5. Deserialize Avro Record
+                        AccountTransactionEntity transaction = deserializeAvroRecord(
+                            record.value(), 
+                            schemaRegistry
+                        );
+
+                        // 6. Process Message
+                        System.out.printf("Success: offset=%d, key=%s, value=%s%n",
+                            record.offset(),
+                            record.key(),
+                            transaction);
+
+                        // 7. Manual Offset Commit
+                        consumer.commitSync(Collections.singletonMap(
+                            new TopicPartition(record.topic(), record.partition()),
+                            new OffsetAndMetadata(record.offset() + 1)));
+                    } catch (Exception e) {
+                        handleDeserializationError(record, e);
+                    }
+                }
+            }
+        } finally {
+            consumer.close();
+        }
+    }
+
+    private static AccountTransactionEntity deserializeAvroRecord(
+        byte[] data, 
+        SchemaRegistryClient schemaRegistry
+    ) throws IOException {
+        // 1. Check for Confluent Wire Format
+        ByteBuffer buffer = ByteBuffer.wrap(data);
+        if (buffer.get() != 0x0) {
+            throw new SerializationException("Not Confluent Avro wire format");
+        }
+
+        // 2. Extract Schema ID
+        int schemaId = buffer.getInt();
+        Schema writerSchema = schemaRegistry.getByID(schemaId);
+
+        // 3. Get Reader Schema
+        Schema readerSchema = AccountTransactionEntity.getClassSchema();
+
+        // 4. Prepare Avro Components
+        byte[] avroPayload = new byte[buffer.remaining()];
+        buffer.get(avroPayload);
+
+        SpecificDatumReader<AccountTransactionEntity> reader = new SpecificDatumReader<>(
+            writerSchema,
+            readerSchema
+        );
+
+        Decoder decoder = DecoderFactory.get().binaryDecoder(avroPayload, null);
+        return reader.read(null, decoder);
+    }
+
+    private static void handleDeserializationError(
+        ConsumerRecord<String, byte[]> record,
+        Exception e
+    ) {
+        System.err.printf("Failed to process record at offset %d: %s%n",
+            record.offset(), e.getMessage());
+
+        // Log raw message for debugging
+        System.err.println("Raw data (hex): " + bytesToHex(record.value()));
+
+        // Optionally send to dead letter queue
+        // deadLetterProducer.send(new ProducerRecord<>("dead-letters", record.key(), record.value()));
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x ", b));
+        }
+        return sb.toString();
+    }
+}
