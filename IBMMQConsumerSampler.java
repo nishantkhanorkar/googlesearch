@@ -1,3 +1,34 @@
+public static Transaction convertToTransaction(GenericRecord genericRecord) {
+        try {
+            // Create a copy of the record to avoid modifying the original
+            GenericRecord recordCopy = new GenericData.Record(genericRecord.getSchema());
+            genericRecord.getSchema().getFields().forEach(field -> {
+                Object value = genericRecord.get(field.name());
+                
+                // Convert Instant to Long (microseconds) if needed
+                if (value instanceof Instant && "transactionTime".equals(field.name())) {
+                    Instant instant = (Instant) value;
+                    value = instant.toEpochMilli() * 1000; // Convert to microseconds
+                }
+                
+                recordCopy.put(field.name(), value);
+            });
+
+            // Perform the conversion
+            return (Transaction) SpecificData.get().deepCopy(
+                Transaction.getClassSchema(),
+                recordCopy
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to convert GenericRecord to Transaction", e);
+        }
+    }
+
+
+
+
+
+
 SpecificDatumReader<AccountTransactionEntity> reader = new SpecificDatumReader<>(
     AccountTransactionEntity.getClassSchema());
 Decoder decoder = DecoderFactory.get().binaryDecoder(
