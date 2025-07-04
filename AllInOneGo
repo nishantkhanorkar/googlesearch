@@ -1,0 +1,214 @@
+import org.apache.jmeter.protocol.java.sampler.AbstractJavaSamplerClient;
+import org.apache.jmeter.protocol.java.sampler.JavaSamplerContext;
+import org.apache.jmeter.samplers.SampleResult;
+import org.apache.jmeter.threads.JMeterContextService;
+import org.apache.jmeter.threads.JMeterVariables;
+import org.json.JSONObject;
+
+import javax.jms.*;
+import java.util.UUID;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
+
+public class MQJsonRequestReplySampler extends AbstractJavaSamplerClient {
+
+    // JMS Resources
+    private Connection connection;
+    private Session session;
+    private MessageProducer requestProducer;
+    private MessageConsumer replyConsumer;
+
+    // Tracking requests and responses
+    private final ConcurrentHashMap<String, SampleData> pendingRequests = new ConcurrentHashMap<>();
+    private final ExecutorService responseProcessingPool = Executors.newFixedThreadPool(20);
+
+    // Configuration parameters
+    private static final String MQ_BROKER_URL = "mq.broker.url";
+    private static final String REQUEST_QUEUE = "request.queue";
+    private static final String REPLY_QUEUE = "reply.queue";
+    private static final String TIMEOUT_MS = "timeout.ms";
+    private static final String MESSAGE_TEMPLATE = "message.template";
+
+    // Class to hold sample data
+    private static class SampleData {
+        final long sentTime;
+        final String clientReference;
+        final SampleResult sampleResult;
+
+        SampleData(long sentTime, String clientReference, SampleResult sampleResult) {
+            this.sentTime = sentTime;
+            this.clientReference = clientReference;
+            this.sampleResult = sampleResult;
+        }
+    }
+
+    @Override
+    public void setupTest(JavaSamplerContext context) {
+        try {
+            // Initialize JMS Connection
+            String brokerUrl = context.getParameter(MQ_BROKER_URL, "tcp://localhost:61616");
+            String requestQueue = context.getParameter(REQUEST_QUEUE, "REQUEST.QUEUE");
+            String replyQueue = context.getParameter(REPLY_QUEUE, "REPLY.QUEUE");
+
+            ConnectionFactory factory = new org.apache.activemq.ActiveMQConnectionFactory(brokerUrl);
+            connection = factory.createConnection();
+            connection.start();
+
+            session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+            // Create producer for request queue
+            Queue reqQueue = session.createQueue(requestQueue);
+            requestProducer = session.createProducer(reqQueue);
+            requestProducer.setDeliveryMode(DeliveryMode.NON_PERSISTENT);
+
+            // Create consumer for reply queue
+            Queue repQueue = session.createQueue(replyQueue);
+            replyConsumer = session.createConsumer(repQueue);
+
+            // Start response listener thread
+            new Thread(this::listenForResponses).start();
+
+        } catch (Exception e) {
+            getLogger().error("Failed to initialize JMS", e);
+            throw new RuntimeException("Failed to initialize JMS", e);
+        }
+    }
+
+    @Override
+    public SampleResult runTest(JavaSamplerContext context) {
+        SampleResult result = new SampleResult();
+        result.sampleStart();
+
+        try {
+            // Get parameters
+            String messageTemplate = context.getParameter(MESSAGE_TEMPLATE, 
+                "{\"clientReference\":\"${__UUID()}\",\"data\":\"test message\"}");
+            long timeout = Long.parseLong(context.getParameter(TIMEOUT_MS, "5000"));
+
+            // Generate message with unique clientReference
+            String clientReference = UUID.randomUUID().toString();
+            String jsonMessage = messageTemplate.replace("${__UUID()}", clientReference);
+            JSONObject jsonObj = new JSONObject(jsonMessage);
+
+            // Set sample label to clientReference
+            result.setSampleLabel(clientReference);
+            result.setSamplerData(jsonMessage);
+
+            // Create and send message
+            TextMessage message = session.createTextMessage(jsonMessage);
+            message.setJMSCorrelationID(clientReference); // Use clientReference as correlation ID
+            requestProducer.send(message);
+
+            // Record sent time and sample data
+            pendingRequests.put(clientReference, new SampleData(System.currentTimeMillis(), clientReference, result));
+
+            // Wait for response (handled by listener thread)
+            long startWait = System.currentTimeMillis();
+            while (System.currentTimeMillis() - startWait < timeout) {
+                if (!pendingRequests.containsKey(clientReference)) {
+                    // Response received (removed by listener)
+                    return result;
+                }
+                Thread.sleep(100);
+            }
+
+            // Timeout reached
+            pendingRequests.remove(clientReference);
+            result.sampleEnd();
+            result.setSuccessful(false);
+            result.setResponseMessage("Timeout waiting for response");
+            result.setResponseCode("504");
+
+        } catch (Exception e) {
+            result.sampleEnd();
+            result.setSuccessful(false);
+            result.setResponseMessage("Exception: " + e.getMessage());
+            result.setResponseCode("500");
+            getLogger().error("Error sending message", e);
+        }
+
+        return result;
+    }
+
+    private void listenForResponses() {
+        while (!Thread.currentThread().isInterrupted()) {
+            try {
+                Message message = replyConsumer.receive(1000);
+                if (message == null) continue;
+
+                responseProcessingPool.submit(() -> processResponse(message));
+            } catch (Exception e) {
+                if (!Thread.currentThread().isInterrupted()) {
+                    getLogger().error("Error in response listener", e);
+                }
+            }
+        }
+    }
+
+    private void processResponse(Message message) {
+        try {
+            if (!(message instanceof TextMessage)) {
+                getLogger().warn("Received non-text message: " + message.getClass().getName());
+                return;
+            }
+
+            TextMessage textMessage = (TextMessage) message;
+            String responseText = textMessage.getText();
+            JSONObject responseJson = new JSONObject(responseText);
+            String clientReference = responseJson.getString("clientReference");
+
+            SampleData sampleData = pendingRequests.remove(clientReference);
+            if (sampleData == null) {
+                getLogger().warn("Received response for unknown clientReference: " + clientReference);
+                return;
+            }
+
+            // Calculate processing time
+            long responseTime = System.currentTimeMillis();
+            long processingTime = responseTime - sampleData.sentTime;
+
+            // Complete the sample result
+            SampleResult result = sampleData.sampleResult;
+            result.sampleEnd();
+            result.setSuccessful(true);
+            result.setResponseMessage("Response received");
+            result.setResponseCodeOK();
+            result.setResponseData(responseText, "UTF-8");
+            result.setDataType(SampleResult.TEXT);
+
+            // Store additional data as JMeter variables
+            JMeterVariables vars = JMeterContextService.getContext().getVariables();
+            vars.put(clientReference + "_processingTime", String.valueOf(processingTime));
+            vars.put(clientReference + "_response", responseText);
+
+            getLogger().debug("Processed response for: " + clientReference + " in " + processingTime + "ms");
+
+        } catch (Exception e) {
+            getLogger().error("Error processing response", e);
+        }
+    }
+
+    @Override
+    public void teardownTest(JavaSamplerContext context) {
+        try {
+            responseProcessingPool.shutdownNow();
+            if (replyConsumer != null) replyConsumer.close();
+            if (requestProducer != null) requestProducer.close();
+            if (session != null) session.close();
+            if (connection != null) connection.close();
+        } catch (Exception e) {
+            getLogger().error("Error during cleanup", e);
+        }
+    }
+
+    @Override
+    public org.apache.jmeter.config.Arguments getDefaultParameters() {
+        org.apache.jmeter.config.Arguments params = new org.apache.jmeter.config.Arguments();
+        params.addArgument(MQ_BROKER_URL, "tcp://localhost:61616");
+        params.addArgument(REQUEST_QUEUE, "REQUEST.QUEUE");
+        params.addArgument(REPLY_QUEUE, "REPLY.QUEUE");
+        params.addArgument(TIMEOUT_MS, "5000");
+        params.addArgument(MESSAGE_TEMPLATE, "{\"clientReference\":\"${__UUID()}\",\"data\":\"test message\"}");
+        return params;
+    }
+}
