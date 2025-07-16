@@ -1,0 +1,51 @@
+def dbInsertTime = System.currentTimeMillis();
+def generatedId = vars.get("inserted_id"); // Assuming you extract this from response
+
+props.put("db_${__threadNum}_time", dbInsertTime);
+props.put("db_${__threadNum}_id", generatedId);
+
+
+
+
+
+
+
+
+
+
+// Extract values from Kafka message
+def kafkaMessage = prev.getResponseDataAsString();
+def kafkaTime = System.currentTimeMillis();
+def kafkaId = // extract your correlation ID from message
+
+// Retrieve DB values using thread number
+def dbTime = props.get("db_${__threadNum}_time");
+def dbId = props.get("db_${__threadNum}_id");
+
+// Verify correlation
+if(dbId != kafkaId) {
+    prev.setSuccessful(false);
+    prev.setResponseMessage("ID mismatch: DB ${dbId} vs Kafka ${kafkaId}");
+} else {
+    // Create custom sample result
+    def customSample = new SampleResult();
+    customSample.setSampleLabel("End-to-End Transaction");
+    customSample.sampleStart();
+    
+    // Set timings (total duration)
+    customSample.setStartTime(dbTime);
+    customSample.setEndTime(kafkaTime);
+    
+    // Set custom metrics
+    def latency = kafkaTime - dbTime;
+    customSample.setResponseData("""
+        DB Insert ID: ${dbId}
+        Kafka Message ID: ${kafkaId}
+        End-to-End Latency: ${latency}ms
+    """.getBytes());
+    
+    customSample.setSuccessful(true);
+    
+    // Add to results
+    SampleResult.addSubResult(customSample);
+}
