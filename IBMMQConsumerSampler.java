@@ -83,3 +83,33 @@ public class TransactionConverter {
         );
     }
 }
+
+
+
+
+
+WITH minute_counts AS (
+    SELECT 
+        TIMESTAMP(CHAR(TIMESTAMP(transaction_timestamp) - 
+                 (MICROSECOND(transaction_timestamp) / 1000000) MICROSECONDS -
+                 (SECOND(transaction_timestamp)) SECONDS)) AS minute_interval,
+        COUNT(*) AS transaction_count
+    FROM transactions
+    WHERE transaction_timestamp >= CURRENT_DATE - 1 HOUR
+    GROUP BY minute_interval
+)
+SELECT 
+    minute_interval,
+    transaction_count,
+    SUM(transaction_count) OVER (ORDER BY minute_interval) AS running_total
+FROM minute_counts
+ORDER BY minute_interval
+WITH UR;
+
+
+
+
+
+
+
+
